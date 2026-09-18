@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kanoodle Lab — endless puzzle generator</title>
+<style>
+  :root{
+    --bg-0:#0f1720;
+    --bg-1:#16212c;
+    --panel:#1c2a37;
+    --panel-2:#22323f;
+    --ink:#eaf1f6;
+    --ink-dim:#9fb2c0;
+    --amber:#f0b545;
+    --amber-ink:#2a1c04;
+    --line:#2c3d4b;
+    --good:#5fbf7a;
+    --bad:#e2604f;
+    font-family: -apple-system, "SF Pro Rounded", "Segoe UI Rounded", "Nunito", "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1100px 500px at 15% -10%, #1c3040 0%, transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, #23181f 0%, transparent 55%),
+      var(--bg-0);
+    color:var(--ink);
+    min-height:100vh;
+    padding: 28px 16px 60px;
+  }
+  .wrap{max-width:900px;margin:0 auto;}
+
+  header{margin-bottom:22px;}
+  h1{
+    font-size:clamp(28px,4vw,40px);
+    margin:0 0 4px;
+    letter-spacing:-0.02em;
+    font-weight:800;
+  }
+  h1 .noodle-o{
+    display:inline-block;
+    width:0.62em;height:0.62em;
+    border-radius:50%;
+    background:conic-gradient(from 210deg,#f0b545,#e2604f,#5fbf7a,#4f8ee2,#a768d6,#f0b545);
+    vertical-align:-0.05em;
+    margin:0 2px;
+  }
+  header p{margin:0;color:var(--ink-dim);font-size:15px;max-width:56ch;line-height:1.5;}
+
+  .tabs{
+    display:flex;gap:8px;margin:20px 0 14px;flex-wrap:wrap;
+  }
+  .tab{
+    padding:9px 16px;border-radius:999px;border:1px solid var(--line);
+    background:var(--panel); color:var(--ink-dim); font-size:14px; font-weight:700;
+    cursor:pointer; transition:all .15s ease;
+  }
+  .tab:hover{color:var(--ink);}
+  .tab.active{background:var(--amber);color:var(--amber-ink);border-color:var(--amber);}
+
+  .controls{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:12px 14px; margin-bottom:18px;
+  }
+  .controls label{font-size:13px;color:var(--ink-dim);display:flex;align-items:center;gap:6px;}
+  select{
+    background:var(--panel-2); color:var(--ink); border:1px solid var(--line);
+    border-radius:8px; padding:6px 10px; font-size:13px; font-weight:600;
+  }
+  button.btn{
+    border:none; border-radius:10px; padding:9px 15px; font-size:13px; font-weight:700;
+    cursor:pointer; transition:transform .1s ease, filter .15s ease;
+  }
+  button.btn:active{transform:scale(0.96);}
+  .btn-primary{background:var(--amber); color:var(--amber-ink);}
+  .btn-primary:hover{filter:brightness(1.08);}
+  .btn-ghost{background:var(--panel-2); color:var(--ink); border:1px solid var(--line);}
+  .btn-ghost:hover{border-color:#3d5567;}
+  .spacer{flex:1;}
+
+  .status{
+    min-height:22px; font-size:14px; font-weight:700; margin-bottom:14px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .status.hint{color:var(--ink-dim); font-weight:500;}
+  .status.win{color:var(--good);}
+  .status.err{color:var(--bad);}
+
+  .board-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:18px;
+    padding:22px; margin-bottom:18px; overflow-x:auto;
+  }
+
+  /* 2D board */
+  .grid2d{
+    display:grid; grid-template-columns: repeat(11, 1fr); gap:6px; width:100%;
+    max-width:640px; margin:0 auto;
+  }
+  .cell{
+    aspect-ratio:1/1; border-radius:50%; border:1px solid var(--line);
+    background:radial-gradient(circle at 35% 30%, #33475a, #202f3b 70%);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; position:relative; transition: transform .08s ease;
+    font-size:11px; font-weight:800; color:rgba(255,255,255,0.85);
+    min-width:22px;
+  }
+  .cell:hover{transform:scale(1.08);}
+  .cell.filled{cursor:pointer; box-shadow: inset 0 -3px 6px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.35);}
+  .cell.given{cursor:default;}
+  .cell.given:hover{transform:none;}
+  .cell.staged{outline:3px solid var(--amber); outline-offset:2px;}
+  .cell.reject{animation: shake .35s ease;}
+  .cell.empty:hover{background:radial-gradient(circle at 35% 30%, #3d5568, #253544 70%);}
+  @keyframes shake{
+    0%,100%{transform:translateX(0);}
+    25%{transform:translateX(-3px);}
+    75%{transform:translateX(3px);}
+  }
+
+  /* 3D pyramid */
+  .pyramid{display:flex; flex-direction:column; align-items:center; gap:10px;}
+  .level{display:flex; flex-direction:column; align-items:center; gap:6px;}
+  .level-label{font-size:11.5px; color:var(--ink-dim); font-weight:700;}
+  .level-grid{display:grid; gap:5px;}
+  .level-grid .cell{width:34px; min-width:0;}
+
+  /* palette */
+  .palette-title{font-size:13px; color:var(--ink-dim); font-weight:700; margin:0 0 10px;}
+  .palette{
+    display:flex; flex-wrap:wrap; gap:10px;
+  }
+  .piece-chip{
+    background:var(--panel-2); border:2px solid var(--line); border-radius:12px;
+    padding:8px 10px 6px; display:flex; flex-direction:column; align-items:center; gap:4px;
+    cursor:pointer; min-width:64px; transition: all .12s ease;
+  }
+  .piece-chip:hover{border-color:#3d5567;}
+  .piece-chip.selected{border-color:var(--amber); background:#2c2210;}
+  .piece-chip svg{display:block;}
+  .piece-chip .plabel{font-size:11px; font-weight:700; color:var(--ink-dim);}
+
+  footer{margin-top:22px; font-size:12.5px; color:var(--ink-dim); line-height:1.6;}
+  footer a{color:var(--ink-dim);}
+
+  @media (max-width:480px){
+    .level-grid .cell{width:26px;}
+    .board-card{padding:14px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Kanoodle<span class="noodle-o"></span>Lab</h1>
+    <p>An endless generator of noodle-packing puzzles for the 5×11 flat board and the 5-level pyramid. Pick a piece, then click the cells it should cover — the puzzle checks the shape for you, so any rotation or flip that fits is fair game.</p>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-mode="2d" id="tab2d">2D board · 5×11</div>
+    <div class="tab" data-mode="3d" id="tab3d">3D pyramid · 5 levels</div>
+  </div>
+
+  <div class="controls">
+    <label>Difficulty
+      <select id="difficulty">
+        <option value="g9">Very easy (9 given)</option>
+        <option value="g8">Beginner (8 given)</option>
+        <option value="g7">Easy-medium (7 given)</option>
+        <option value="g5" selected>Intermediate (5 given)</option>
+        <option value="g3">Medium-hard (3 given)</option>
+        <option value="g2">Expert (2 given)</option>
+      </select>
+    </label>
+    <button class="btn btn-primary" id="newPuzzleBtn">New puzzle</button>
+    <button class="btn btn-ghost" id="resetBtn">Reset</button>
+    <button class="btn btn-ghost" id="solveBtn">Show solution</button>
+  </div>
+
+  <div class="status hint" id="status">Generating your first puzzle…</div>
+
+  <div class="board-card">
+    <div id="boardHost"></div>
+  </div>
+
+  <div class="palette-title">Pieces to place</div>
+  <div class="palette" id="palette"></div>
+
+  <footer>
+    These are original noodle shapes sized to match Kanoodle's proportions (12 pieces, 55 cells total in both the flat board and the pyramid) — not a scan of the retail piece set, so treat this as unlimited bonus puzzles rather than a replacement for the physical booklet.
+  </footer>
+</div>
+
+<script>
+(function(){
+
+// ---------- Piece definitions ----------
+const PIECES = [
+  { id:'A', name:'Foot-4',    color:'#e8863c', cells:[[0,0],[0,1],[0,2],[1,2]] },              // orange
+  { id:'B', name:'P',         color:'#e2504f', cells:[[0,0],[0,1],[1,0],[1,1],[2,0]] },        // red
+  { id:'C', name:'L-long',    color:'#24467a', cells:[[0,0],[1,0],[2,0],[3,0],[3,1]] },        // dark blue
+  { id:'D', name:'Y',         color:'#f2a6c6', cells:[[0,1],[1,0],[1,1],[2,1],[3,1]] },        // light pink
+  { id:'E', name:'N',         color:'#1f6b45', cells:[[0,1],[1,1],[2,0],[2,1],[3,0]] },        // dark green
+  { id:'F', name:'Tromino L', color:'#eef2f5', cells:[[0,0],[1,0],[1,1]] },                    // white
+  { id:'G', name:'V',         color:'#86c5e8', cells:[[0,0],[0,1],[0,2],[1,2],[2,2]] },        // light blue
+  { id:'H', name:'W',         color:'#ef1f7f', cells:[[0,0],[1,0],[1,1],[2,1],[2,2]] },        // hot pink
+  { id:'I', name:'U',         color:'#f0c93f', cells:[[0,0],[0,2],[1,0],[1,1],[1,2]] },        // yellow
+  { id:'J', name:'I-4',       color:'#8b5fd1', cells:[[0,0],[0,1],[0,2],[0,3]] },               // purple
+  { id:'K', name:'Square',    color:'#8fd18c', cells:[[0,0],[0,1],[1,0],[1,1]] },               // light green
+  { id:'L', name:'Plus',      color:'#a7b0b8', cells:[[0,1],[1,0],[1,1],[1,2],[2,1]] },         // gray
+];
+
+function normalize(cells){
+  const minR=Math.min(...cells.map(c=>c[0])), minC=Math.min(...cells.map(c=>c[1]));
+  return cells.map(c=>[c[0]-minR,c[1]-minC]);
+}
+function key(cells){ return cells.map(c=>c[0]+','+c[1]).sort().join(';'); }
+function rotate(cells){ return cells.map(c=>[c[1], -c[0]]); }
+function reflect(cells){ return cells.map(c=>[c[0], -c[1]]); }
+function orientations(cells){
+  const seen=new Map(); let cur=cells;
+  for(let f=0; f<2; f++){
+    cur = f===0 ? cells : reflect(cells);
+    for(let r=0;r<4;r++){
+      const norm=normalize(cur); const k=key(norm);
+      if(!seen.has(k)) seen.set(k, norm);
+      cur=rotate(cur);
+    }
+  }
+  return [...seen.values()];
+}
+PIECES.forEach(p=> p.orientations = orientations(p.cells));
+
+// ---------- Valid cell sets ----------
+function validCells2D(){
+  const set=new Set();
+  for(let r=0;r<5;r++) for(let c=0;c<11;c++) set.add(r+','+c);
+  return set;
+}
+function validCells3D(){
+  const set=new Set();
+  for(let z=0; z<5; z++){
+    const side = 5 - z;
+    for(let x=0;x<side;x++) for(let y=0;y<side;y++) set.add(x+','+y+','+z);
+  }
+  return set;
+}
+
+// ---------- Placement precompute ----------
+function precompute2D(validSet){
+  const placements=[];
+  PIECES.forEach((p,idx)=>{
+    p.orientations.forEach(orient=>{
+      for(let ar=0; ar<5; ar++){
+        for(let ac=0; ac<11; ac++){
+          const cells = orient.map(c=>[c[0]+ar, c[1]+ac]);
+          if(cells.every(c=>validSet.has(c[0]+','+c[1]))) placements.push({pieceIdx:idx, cells});
+        }
+      }
+    });
+  });
+  return placements;
+}
+function precompute3D(validSet){
+  const placements=[];
+  PIECES.forEach((p,idx)=>{
+    p.orientations.forEach(orient=>{
+      for(let plane=0; plane<3; plane++){
+        for(let u=0;u<5;u++) for(let v=0;v<5;v++) for(let w=0;w<5;w++){
+          const cells = orient.map(([a,b])=>{
+            let x,y,z;
+            if(plane===0){ x=a+u; y=b+v; z=w; }
+            else if(plane===1){ x=a+u; z=b+w; y=v; }
+            else { y=a+v; z=b+w; x=u; }
+            return [x,y,z];
+          });
+          if(cells.every(c=>validSet.has(c.join(',')))) placements.push({pieceIdx:idx, cells});
+        }
+      }
+    });
+  });
+  return placements;
+}
+
+// ---------- Generic backtracking solver (MRV heuristic) ----------
+function solve(validSet, is3D){
+  const placements = is3D ? precompute3D(validSet) : precompute2D(validSet);
+  const cellKeyOf = c => is3D ? c.join(',') : c[0]+','+c[1];
+  const cellToPlacements = new Map();
+  placements.forEach(pl=>{
+    pl.cells.forEach(c=>{
+      const k=cellKeyOf(c);
+      if(!cellToPlacements.has(k)) cellToPlacements.set(k, []);
+      cellToPlacements.get(k).push(pl);
+    });
+  });
+  const remaining = new Set(validSet);
+  const used = new Array(PIECES.length).fill(false);
+  const solution = [];
+
+  function bestCell(){
+    let best=null, bestCands=null, bestCount=Infinity;
+    for(const k of remaining){
+      const all = cellToPlacements.get(k) || [];
+      const cands = all.filter(pl=>!used[pl.pieceIdx] && pl.cells.every(c=>remaining.has(cellKeyOf(c))));
+      if(cands.length < bestCount){
+        bestCount = cands.length; best=k; bestCands=cands;
+        if(bestCount<=1) break;
+      }
+    }
+    return {best,bestCands};
+  }
+
+  let steps=0;
+  function dfs(){
+    steps++;
+    if(steps>3000000) return false;
+    if(remaining.size===0) return true;
+    const {bestCands} = bestCell();
+    if(!bestCands || bestCands.length===0) return false;
+    const cands = bestCands.slice();
+    for(let i=cands.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[cands[i],cands[j]]=[cands[j],cands[i]];}
+    for(const pl of cands){
+      used[pl.pieceIdx]=true;
+      pl.cells.forEach(c=>remaining.delete(cellKeyOf(c)));
+      solution.push(pl);
+      if(dfs()) return true;
+      solution.pop();
+      pl.cells.forEach(c=>remaining.add(cellKeyOf(c)));
+      used[pl.pieceIdx]=false;
+    }
+    return false;
+  }
+  return dfs() ? solution : null;
+}
+
+// ---------- Shape matching (used to validate a user's click-selection) ----------
+function cellsMatchPiece(selectedCells, piece, is3D){
+  if(selectedCells.length !== piece.cells.length) return false;
+  let rel;
+  if(!is3D){
+    rel = selectedCells;
+  } else {
+    const xs=selectedCells.map(c=>c[0]), ys=selectedCells.map(c=>c[1]), zs=selectedCells.map(c=>c[2]);
+    const constZ = zs.every(v=>v===zs[0]);
+    const constY = ys.every(v=>v===ys[0]);
+    const constX = xs.every(v=>v===xs[0]);
+    if(constZ) rel = selectedCells.map(c=>[c[0],c[1]]);
+    else if(constY) rel = selectedCells.map(c=>[c[0],c[2]]);
+    else if(constX) rel = selectedCells.map(c=>[c[1],c[2]]);
+    else return false;
+  }
+  const norm = normalize(rel);
+  const k = key(norm);
+  return piece.orientations.some(o=>key(o)===k);
+}
+
+// ---------- App state ----------
+let mode = '2d';
+let currentPuzzle = null; // { solution, givenIdxs: Set }
+let board = new Map();    // cellKey -> {pieceIdx, given}
+let pool = [];            // piece indices not yet placed
+let selectedPieceIdx = null;
+let staged = [];          // array of coordinate arrays currently selected for placement
+
+const DIFF = { g9:9, g8:8, g7:7, g5:5, g3:3, g2:2 };
+
+function cellKeyOf(c){ return mode==='3d' ? c.join(',') : c[0]+','+c[1]; }
+
+function newPuzzle(){
+  setStatus('Shuffling the noodles…', 'hint');
+  setTimeout(()=>{
+    const validSet = mode==='3d' ? validCells3D() : validCells2D();
+    const solution = solve(validSet, mode==='3d');
+    if(!solution){ setStatus('Could not generate a puzzle — try again.', 'err'); return; }
+    const order = [...Array(PIECES.length).keys()];
+    for(let i=order.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[order[i],order[j]]=[order[j],order[i]];}
+    const givenCount = DIFF[document.getElementById('difficulty').value];
+    const givenIdxs = new Set(order.slice(0, givenCount));
+    currentPuzzle = { solution, givenIdxs };
+    rebuildFromPuzzle();
+    setStatus('New puzzle ready. Pick a piece below, then click its cells on the board.', 'hint');
+  }, 20);
+}
+
+function rebuildFromPuzzle(){
+  board = new Map();
+  pool = [];
+  selectedPieceIdx = null;
+  staged = [];
+  currentPuzzle.solution.forEach(pl=>{
+    if(currentPuzzle.givenIdxs.has(pl.pieceIdx)){
+      pl.cells.forEach(c=> board.set(cellKeyOf(c), {pieceIdx: pl.pieceIdx, given:true}));
+    } else {
+      pool.push(pl.pieceIdx);
+    }
+  });
+  pool.sort((a,b)=>a-b);
+  render();
+}
+
+function resetPuzzle(){
+  if(!currentPuzzle) return;
+  rebuildFromPuzzle();
+  setStatus('Board reset to the starting layout.', 'hint');
+}
+
+function showSolution(){
+  if(!currentPuzzle) return;
+  board = new Map();
+  currentPuzzle.solution.forEach(pl=>{
+    pl.cells.forEach(c=> board.set(cellKeyOf(c), {pieceIdx: pl.pieceIdx, given:true}));
+  });
+  pool = [];
+  selectedPieceIdx = null;
+  staged = [];
+  render();
+  setStatus('Solution revealed. Hit Reset to go back to solving.', 'hint');
+}
+
+function setStatus(msg, cls){
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + (cls||'');
+}
+
+function checkWin(){
+  const totalCells = mode==='3d' ? 55 : 55;
+  if(pool.length===0 && board.size===totalCells){
+    setStatus('Solved! Every noodle placed, board full. Nice work.', 'win');
+    return true;
+  }
+  return false;
+}
+
+function selectPiece(idx){
+  if(selectedPieceIdx===idx){ selectedPieceIdx=null; staged=[]; }
+  else { selectedPieceIdx=idx; staged=[]; }
+  render();
+}
+
+function clickCell(coords){
+  const k = cellKeyOf(coords);
+  const occupant = board.get(k);
+
+  if(occupant){
+    if(!occupant.given){
+      // pick the whole piece back up
+      const idx = occupant.pieceIdx;
+      for(const [kk, v] of board){ if(v.pieceIdx===idx) board.delete(kk); }
+      pool.push(idx); pool.sort((a,b)=>a-b);
+      selectedPieceIdx=null; staged=[];
+      setStatus('Picked that noodle back up.', 'hint');
+      render();
+    }
+    return;
+  }
+
+  if(selectedPieceIdx===null){
+    setStatus('Select a piece from the list below first.', 'hint');
+    return;
+  }
+
+  const already = staged.findIndex(c=>cellKeyOf(c)===k);
+  if(already>=0){ staged.splice(already,1); render(); return; }
+
+  staged.push(coords);
+  const piece = PIECES[selectedPieceIdx];
+
+  if(staged.length < piece.cells.length){ render(); return; }
+
+  // attempt to commit
+  if(cellsMatchPiece(staged, piece, mode==='3d')){
+    staged.forEach(c=> board.set(cellKeyOf(c), {pieceIdx:selectedPieceIdx, given:false}));
+    pool = pool.filter(i=>i!==selectedPieceIdx);
+    staged=[]; selectedPieceIdx=null;
+    render();
+    if(!checkWin()) setStatus('Placed! Pick the next piece.', 'hint');
+  } else {
+    const badKeys = new Set(staged.map(cellKeyOf));
+    render(badKeys);
+    setStatus('Those cells don\u2019t match that noodle\u2019s shape — try again.', 'err');
+    staged=[];
+    setTimeout(render, 380);
+  }
+}
+
+// ---------- Rendering ----------
+function svgForPiece(piece, size){
+  size = size || 34;
+  const cell = size/4;
+  const cells = piece.cells;
+  const maxR = Math.max(...cells.map(c=>c[0]))+1, maxC = Math.max(...cells.map(c=>c[1]))+1;
+  const w = maxC*cell, h = maxR*cell;
+  let dots = cells.map(c=>`<circle cx="${c[1]*cell+cell/2}" cy="${c[0]*cell+cell/2}" r="${cell*0.42}" fill="${piece.color}"/>`).join('');
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${dots}</svg>`;
+}
+
+function render(badKeys){
+  renderBoard(badKeys);
+  renderPalette();
+}
+
+function renderBoard(badKeys){
+  const host = document.getElementById('boardHost');
+  host.innerHTML = '';
+  badKeys = badKeys || new Set();
+
+  if(mode==='2d'){
+    const grid = document.createElement('div');
+    grid.className='grid2d';
+    for(let r=0;r<5;r++){
+      for(let c=0;c<11;c++){
+        grid.appendChild(makeCellEl([r,c], badKeys));
+      }
+    }
+    host.appendChild(grid);
+  } else {
+    const pyr = document.createElement('div');
+    pyr.className='pyramid';
+    for(let z=4; z>=0; z--){
+      const side = 5-z;
+      const lvl = document.createElement('div');
+      lvl.className='level';
+      const label = document.createElement('div');
+      label.className='level-label';
+      label.textContent = `Level ${z+1} · ${side}\u00d7${side}` + (z===0?' (base)': z===4 ? ' (apex)':'');
+      lvl.appendChild(label);
+      const g = document.createElement('div');
+      g.className='level-grid';
+      g.style.gridTemplateColumns = `repeat(${side}, 1fr)`;
+      g.style.width = (side*39)+'px';
+      for(let x=0;x<side;x++) for(let y=0;y<side;y++){
+        g.appendChild(makeCellEl([x,y,z], badKeys));
+      }
+      lvl.appendChild(g);
+      pyr.appendChild(lvl);
+    }
+    host.appendChild(pyr);
+  }
+}
+
+function makeCellEl(coords, badKeys){
+  const k = cellKeyOf(coords);
+  const el = document.createElement('div');
+  const occ = board.get(k);
+  const isStaged = staged.some(c=>cellKeyOf(c)===k);
+  el.className = 'cell ' + (occ ? 'filled '+(occ.given?'given':'') : 'empty') + (isStaged?' staged':'') + (badKeys.has(k)?' reject':'');
+  if(occ){
+    const p = PIECES[occ.pieceIdx];
+    el.style.background = `radial-gradient(circle at 35% 30%, ${lighten(p.color)}, ${p.color} 75%)`;
+    el.style.color = isLight(p.color) ? '#1c2a37' : 'rgba(255,255,255,0.92)';
+    el.textContent = p.id;
+  }
+  el.addEventListener('click', ()=>clickCell(coords));
+  return el;
+}
+
+function isLight(hex){
+  const n = parseInt(hex.slice(1),16);
+  const r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+  return (0.299*r + 0.587*g + 0.114*b) > 165;
+}
+function lighten(hex){
+  const n = parseInt(hex.slice(1),16);
+  const r = Math.min(255, ((n>>16)&255) + 55);
+  const g = Math.min(255, ((n>>8)&255) + 55);
+  const b = Math.min(255, (n&255) + 55);
+  return `rgb(${r},${g},${b})`;
+}
+
+function renderPalette(){
+  const host = document.getElementById('palette');
+  host.innerHTML = '';
+  if(pool.length===0){
+    const p = document.createElement('div');
+    p.style.color='var(--ink-dim)'; p.style.fontSize='13px';
+    p.textContent = 'All pieces placed.';
+    host.appendChild(p);
+    return;
+  }
+  pool.forEach(idx=>{
+    const piece = PIECES[idx];
+    const chip = document.createElement('div');
+    chip.className = 'piece-chip' + (selectedPieceIdx===idx?' selected':'');
+    chip.innerHTML = svgForPiece(piece) + `<div class="plabel">${piece.id} · ${piece.cells.length}</div>`;
+    chip.addEventListener('click', ()=>selectPiece(idx));
+    host.appendChild(chip);
+  });
+}
+
+// ---------- Wiring ----------
+document.getElementById('tab2d').addEventListener('click', ()=>{ switchMode('2d'); });
+document.getElementById('tab3d').addEventListener('click', ()=>{ switchMode('3d'); });
+document.getElementById('newPuzzleBtn').addEventListener('click', newPuzzle);
+document.getElementById('resetBtn').addEventListener('click', resetPuzzle);
+document.getElementById('solveBtn').addEventListener('click', showSolution);
+document.getElementById('difficulty').addEventListener('change', newPuzzle);
+
+function switchMode(m){
+  if(mode===m) return;
+  mode = m;
+  document.getElementById('tab2d').classList.toggle('active', m==='2d');
+  document.getElementById('tab3d').classList.toggle('active', m==='3d');
+  newPuzzle();
+}
+
+newPuzzle();
+})();
+</script>
+</body>
+</html>
